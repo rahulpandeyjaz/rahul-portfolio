@@ -268,354 +268,490 @@ function Lightbox({ src, alt, onClose }: { src: string; alt: string; onClose: ()
   );
 }
 
-// ─── Snake & Ladder Game ───────────────────────────────────────────────────────
+// ─── Chess Game — Human (White) vs AI (Black, Intermediate) ─────────────────
 
-const SNAKES: Record<number, number> = {
-  17: 7, 54: 34, 62: 19, 64: 60, 87: 24, 93: 73, 95: 75, 99: 78
-};
-const LADDERS: Record<number, number> = {
-  4: 14, 9: 31, 20: 38, 28: 84, 40: 59, 51: 67, 63: 81, 71: 91
+type ChessColor = 'w' | 'b';
+type ChessPieceType = 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
+type ChessPiece = { type: ChessPieceType; color: ChessColor };
+type ChessSquare = ChessPiece | null;
+type ChessBoard = ChessSquare[][];
+type ChessMove = {
+  from: [number, number];
+  to: [number, number];
+  promotion?: ChessPieceType;
+  enPassant?: boolean;
+  castling?: boolean;
 };
 
-function cellToCoord(cell: number): { row: number; col: number } {
-  const row = Math.floor((cell - 1) / 10);
-  const col = row % 2 === 0 ? (cell - 1) % 10 : 9 - (cell - 1) % 10;
-  return { row, col };
+const PIECE_VALUES: Record<ChessPieceType, number> = {
+  p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000
+};
+
+const PAWN_TABLE = [
+  [0,0,0,0,0,0,0,0],[50,50,50,50,50,50,50,50],[10,10,20,30,30,20,10,10],
+  [5,5,10,25,25,10,5,5],[0,0,0,20,20,0,0,0],[5,-5,-10,0,0,-10,-5,5],
+  [5,10,10,-20,-20,10,10,5],[0,0,0,0,0,0,0,0]
+];
+const KNIGHT_TABLE = [
+  [-50,-40,-30,-30,-30,-30,-40,-50],[-40,-20,0,0,0,0,-20,-40],
+  [-30,0,10,15,15,10,0,-30],[-30,5,15,20,20,15,5,-30],
+  [-30,0,15,20,20,15,0,-30],[-30,5,10,15,15,10,5,-30],
+  [-40,-20,0,5,5,0,-20,-40],[-50,-40,-30,-30,-30,-30,-40,-50]
+];
+const BISHOP_TABLE = [
+  [-20,-10,-10,-10,-10,-10,-10,-20],[-10,0,0,0,0,0,0,-10],
+  [-10,0,5,10,10,5,0,-10],[-10,5,5,10,10,5,5,-10],
+  [-10,0,10,10,10,10,0,-10],[-10,10,10,10,10,10,10,-10],
+  [-10,5,0,0,0,0,5,-10],[-20,-10,-10,-10,-10,-10,-10,-20]
+];
+const ROOK_TABLE = [
+  [0,0,0,0,0,0,0,0],[5,10,10,10,10,10,10,5],[-5,0,0,0,0,0,0,-5],
+  [-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],
+  [-5,0,0,0,0,0,0,-5],[0,0,0,5,5,0,0,0]
+];
+const QUEEN_TABLE = [
+  [-20,-10,-10,-5,-5,-10,-10,-20],[-10,0,0,0,0,0,0,-10],
+  [-10,0,5,5,5,5,0,-10],[-5,0,5,5,5,5,0,-5],
+  [0,0,5,5,5,5,0,-5],[-10,5,5,5,5,5,0,-10],
+  [-10,0,5,0,0,0,0,-10],[-20,-10,-10,-5,-5,-10,-10,-20]
+];
+const KING_TABLE = [
+  [-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],
+  [-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],
+  [-20,-30,-30,-40,-40,-30,-30,-20],[-10,-20,-20,-20,-20,-20,-20,-10],
+  [20,20,0,0,0,0,20,20],[20,30,10,0,0,10,30,20]
+];
+
+function getPosValue(piece: ChessPiece, row: number, col: number): number {
+  const r = piece.color === 'w' ? row : 7 - row;
+  switch (piece.type) {
+    case 'p': return PAWN_TABLE[r][col];
+    case 'n': return KNIGHT_TABLE[r][col];
+    case 'b': return BISHOP_TABLE[r][col];
+    case 'r': return ROOK_TABLE[r][col];
+    case 'q': return QUEEN_TABLE[r][col];
+    case 'k': return KING_TABLE[r][col];
+  }
 }
 
-type GameState = {
-  positions: [number, number];
-  currentPlayer: 0 | 1;
-  dice: number;
-  log: string[];
-  winner: number | null;
-  phase: "idle" | "rolling" | "moving" | "done";
-  moveHighlight: number | null;
+function cloneBoard(board: ChessBoard): ChessBoard {
+  return board.map(row => row.map(cell => cell ? { ...cell } : null));
+}
+
+function findKing(board: ChessBoard, color: ChessColor): [number, number] | null {
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      if (p && p.type === 'k' && p.color === color) return [r, c];
+    }
+  return null;
+}
+
+function getRawMoves(board: ChessBoard, row: number, col: number, ep: [number, number] | null): ChessMove[] {
+  const piece = board[row][col];
+  if (!piece) return [];
+  const moves: ChessMove[] = [];
+  const { type, color } = piece;
+  const opp: ChessColor = color === 'w' ? 'b' : 'w';
+
+  const slide = (dr: number, dc: number) => {
+    let r = row + dr, c = col + dc;
+    while (r >= 0 && r < 8 && c >= 0 && c < 8) {
+      if (board[r][c]) { if (board[r][c]!.color === opp) moves.push({ from: [row, col], to: [r, c] }); break; }
+      moves.push({ from: [row, col], to: [r, c] });
+      r += dr; c += dc;
+    }
+  };
+
+  if (type === 'p') {
+    const dir = color === 'w' ? -1 : 1;
+    const startRow = color === 'w' ? 6 : 1;
+    const promRow = color === 'w' ? 0 : 7;
+    const nr = row + dir;
+    if (nr >= 0 && nr < 8 && !board[nr][col]) {
+      if (nr === promRow) {
+        (['q','r','b','n'] as ChessPieceType[]).forEach(pt => moves.push({ from: [row, col], to: [nr, col], promotion: pt }));
+      } else {
+        moves.push({ from: [row, col], to: [nr, col] });
+        if (row === startRow && !board[nr + dir]?.[col]) moves.push({ from: [row, col], to: [nr + dir, col] });
+      }
+    }
+    for (const dc of [-1, 1]) {
+      const nc = col + dc;
+      if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+        if (board[nr][nc]?.color === opp) {
+          if (nr === promRow) (['q','r','b','n'] as ChessPieceType[]).forEach(pt => moves.push({ from: [row, col], to: [nr, nc], promotion: pt }));
+          else moves.push({ from: [row, col], to: [nr, nc] });
+        }
+        if (ep && nr === ep[0] && nc === ep[1]) moves.push({ from: [row, col], to: [nr, nc], enPassant: true });
+      }
+    }
+  } else if (type === 'n') {
+    for (const [dr, dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]) {
+      const nr = row + dr, nc = col + dc;
+      if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && board[nr][nc]?.color !== color)
+        moves.push({ from: [row, col], to: [nr, nc] });
+    }
+  } else if (type === 'b') {
+    for (const [dr, dc] of [[-1,-1],[-1,1],[1,-1],[1,1]]) slide(dr, dc);
+  } else if (type === 'r') {
+    for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) slide(dr, dc);
+  } else if (type === 'q') {
+    for (const [dr, dc] of [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]]) slide(dr, dc);
+  } else if (type === 'k') {
+    for (const [dr, dc] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) {
+      const nr = row + dr, nc = col + dc;
+      if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && board[nr][nc]?.color !== color)
+        moves.push({ from: [row, col], to: [nr, nc] });
+    }
+  }
+  return moves;
+}
+
+function isUnderAttack(board: ChessBoard, row: number, col: number, byColor: ChessColor): boolean {
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      if (!p || p.color !== byColor) continue;
+      if (getRawMoves(board, r, c, null).some(m => m.to[0] === row && m.to[1] === col)) return true;
+    }
+  return false;
+}
+
+function isInCheck(board: ChessBoard, color: ChessColor): boolean {
+  const king = findKing(board, color);
+  if (!king) return false;
+  return isUnderAttack(board, king[0], king[1], color === 'w' ? 'b' : 'w');
+}
+
+function applyMove(board: ChessBoard, move: ChessMove): ChessBoard {
+  const nb = cloneBoard(board);
+  const piece = nb[move.from[0]][move.from[1]]!;
+  nb[move.to[0]][move.to[1]] = move.promotion ? { type: move.promotion, color: piece.color } : piece;
+  nb[move.from[0]][move.from[1]] = null;
+  if (move.enPassant) nb[move.from[0]][move.to[1]] = null;
+  if (move.castling) {
+    const row = move.from[0];
+    if (move.to[1] === 6) { nb[row][5] = nb[row][7]; nb[row][7] = null; }
+    else { nb[row][3] = nb[row][0]; nb[row][0] = null; }
+  }
+  return nb;
+}
+
+type CastlingRights = { wK: boolean; wQ: boolean; bK: boolean; bQ: boolean };
+
+function getLegalMoves(board: ChessBoard, row: number, col: number, ep: [number, number] | null, cr: CastlingRights): ChessMove[] {
+  const piece = board[row][col];
+  if (!piece) return [];
+  let raw = getRawMoves(board, row, col, ep);
+
+  if (piece.type === 'k') {
+    const color = piece.color;
+    const baseRow = color === 'w' ? 7 : 0;
+    const opp: ChessColor = color === 'w' ? 'b' : 'w';
+    if (row === baseRow && col === 4 && !isInCheck(board, color)) {
+      if ((color === 'w' ? cr.wK : cr.bK) && !board[baseRow][5] && !board[baseRow][6] &&
+          board[baseRow][7]?.type === 'r' &&
+          !isUnderAttack(board, baseRow, 5, opp) && !isUnderAttack(board, baseRow, 6, opp))
+        raw.push({ from: [row, col], to: [baseRow, 6], castling: true });
+      if ((color === 'w' ? cr.wQ : cr.bQ) && !board[baseRow][3] && !board[baseRow][2] && !board[baseRow][1] &&
+          board[baseRow][0]?.type === 'r' &&
+          !isUnderAttack(board, baseRow, 3, opp) && !isUnderAttack(board, baseRow, 2, opp))
+        raw.push({ from: [row, col], to: [baseRow, 2], castling: true });
+    }
+  }
+  return raw.filter(m => !isInCheck(applyMove(board, m), piece.color));
+}
+
+function getAllLegalMoves(board: ChessBoard, color: ChessColor, ep: [number, number] | null, cr: CastlingRights): ChessMove[] {
+  const moves: ChessMove[] = [];
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++)
+      if (board[r][c]?.color === color) moves.push(...getLegalMoves(board, r, c, ep, cr));
+  return moves;
+}
+
+function evaluate(board: ChessBoard): number {
+  let score = 0;
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      if (!p) continue;
+      const val = PIECE_VALUES[p.type] + getPosValue(p, r, c);
+      score += p.color === 'w' ? val : -val;
+    }
+  return score;
+}
+
+function minimax(board: ChessBoard, depth: number, alpha: number, beta: number, isMax: boolean, ep: [number, number] | null, cr: CastlingRights): number {
+  if (depth === 0) return evaluate(board);
+  const color: ChessColor = isMax ? 'w' : 'b';
+  const moves = getAllLegalMoves(board, color, ep, cr);
+  if (moves.length === 0) return isInCheck(board, color) ? (isMax ? -50000 : 50000) : 0;
+  if (isMax) {
+    let best = -Infinity;
+    for (const m of moves) { best = Math.max(best, minimax(applyMove(board, m), depth - 1, alpha, beta, false, null, cr)); alpha = Math.max(alpha, best); if (beta <= alpha) break; }
+    return best;
+  } else {
+    let best = Infinity;
+    for (const m of moves) { best = Math.min(best, minimax(applyMove(board, m), depth - 1, alpha, beta, true, null, cr)); beta = Math.min(beta, best); if (beta <= alpha) break; }
+    return best;
+  }
+}
+
+function getBestAIMove(board: ChessBoard, ep: [number, number] | null, cr: CastlingRights): ChessMove | null {
+  const moves = getAllLegalMoves(board, 'b', ep, cr);
+  if (!moves.length) return null;
+  let best: ChessMove | null = null, bestVal = Infinity;
+  for (const m of moves) {
+    const val = minimax(applyMove(board, m), 2, -Infinity, Infinity, true, null, cr);
+    if (val < bestVal) { bestVal = val; best = m; }
+  }
+  return best;
+}
+
+function initChessBoard(): ChessBoard {
+  const b: ChessBoard = Array(8).fill(null).map(() => Array(8).fill(null));
+  const back: ChessPieceType[] = ['r','n','b','q','k','b','n','r'];
+  for (let c = 0; c < 8; c++) {
+    b[0][c] = { type: back[c], color: 'b' };
+    b[1][c] = { type: 'p', color: 'b' };
+    b[6][c] = { type: 'p', color: 'w' };
+    b[7][c] = { type: back[c], color: 'w' };
+  }
+  return b;
+}
+
+const GLYPHS: Record<ChessColor, Record<ChessPieceType, string>> = {
+  w: { k:'♔', q:'♕', r:'♖', b:'♗', n:'♘', p:'♙' },
+  b: { k:'♚', q:'♛', r:'♜', b:'♝', n:'♞', p:'♟' }
 };
 
-function SnakeLadderGame({ onClose }: { onClose: () => void }) {
-  const CELL_SIZE = 44;
-  const COLS = 10;
+const FILES = ['a','b','c','d','e','f','g','h'];
+const toAN = (r: number, c: number) => `${FILES[c]}${8 - r}`;
 
-  const initState = (): GameState => ({
-    positions: [0, 0],
-    currentPlayer: 0,
-    dice: 1,
-    log: ["Game started! Watching P1 🔴 vs P2 🔵 play automatically."],
-    winner: null,
-    phase: "idle",
-    moveHighlight: null
-  });
-
-  const [game, setGame] = useState<GameState>(initState);
-  const [autoPlay, setAutoPlay] = useState(true);
+function ChessGame({ onClose }: { onClose: () => void }) {
+  const [board, setBoard] = useState<ChessBoard>(initChessBoard);
+  const [selected, setSelected] = useState<[number, number] | null>(null);
+  const [legalMoves, setLegalMoves] = useState<ChessMove[]>([]);
+  const [turn, setTurn] = useState<ChessColor>('w');
+  const [status, setStatus] = useState('Your turn — you are White ♔');
+  const [log, setLog] = useState<string[]>(['Game started! You play White ♔ — AI plays Black ♚']);
+  const [ep, setEp] = useState<[number, number] | null>(null);
+  const [cr, setCr] = useState<CastlingRights>({ wK: true, wQ: true, bK: true, bQ: true });
+  const [gameOver, setGameOver] = useState(false);
+  const [aiThinking, setAiThinking] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const rollAndMove = useCallback((state: GameState): GameState => {
-    if (state.winner !== null) return state;
+  useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0; }, [log]);
 
-    const p = state.currentPlayer;
-    const dice = Math.floor(Math.random() * 6) + 1;
-    const pName = p === 0 ? "P1 🔴" : "P2 🔵";
-    let newPos = state.positions[p] + dice;
-    let logEntry = `${pName} rolled ${dice}`;
+  const reset = () => {
+    setBoard(initChessBoard()); setSelected(null); setLegalMoves([]);
+    setTurn('w'); setStatus('Your turn — you are White ♔');
+    setLog(['New game! You are White ♔, AI is Black ♚']);
+    setEp(null); setCr({ wK:true, wQ:true, bK:true, bQ:true });
+    setGameOver(false); setAiThinking(false);
+  };
 
-    if (newPos > 100) {
-      logEntry += ` → stays at ${state.positions[p]} (needs exact roll)`;
-      return {
-        ...state,
-        dice,
-        log: [logEntry, ...state.log].slice(0, 30),
-        currentPlayer: (p === 0 ? 1 : 0) as 0 | 1,
-        phase: "idle"
-      };
-    }
-
-    if (newPos === 100) {
-      const positions: [number, number] = [...state.positions] as [number, number];
-      positions[p] = 100;
-      logEntry += ` → lands on 100 🎉 ${pName} WINS!`;
-      return {
-        ...state,
-        dice,
-        positions,
-        log: [logEntry, ...state.log].slice(0, 30),
-        winner: p,
-        phase: "done",
-        moveHighlight: 100
-      };
-    }
-
-    if (SNAKES[newPos]) {
-      const from = newPos;
-      newPos = SNAKES[newPos];
-      logEntry += ` → 🐍 Snake! ${from} → ${newPos}`;
-    } else if (LADDERS[newPos]) {
-      const from = newPos;
-      newPos = LADDERS[newPos];
-      logEntry += ` → 🪜 Ladder! ${from} → ${newPos}`;
-    } else {
-      logEntry += ` → ${newPos}`;
-    }
-
-    const positions: [number, number] = [...state.positions] as [number, number];
-    positions[p] = newPos;
-
-    return {
-      ...state,
-      dice,
-      positions,
-      log: [logEntry, ...state.log].slice(0, 30),
-      currentPlayer: (p === 0 ? 1 : 0) as 0 | 1,
-      phase: "idle",
-      moveHighlight: newPos
-    };
+  const doAIMove = useCallback((b: ChessBoard, currentCr: CastlingRights) => {
+    setAiThinking(true);
+    setStatus('AI is thinking... ♟');
+    setTimeout(() => {
+      const move = getBestAIMove(b, null, currentCr);
+      if (!move) {
+        const msg = isInCheck(b, 'b') ? 'Checkmate! You win! 🎉' : 'Stalemate — draw!';
+        setStatus(msg); setLog(p => [msg, ...p]); setGameOver(true); setAiThinking(false); return;
+      }
+      const piece = b[move.from[0]][move.from[1]]!;
+      const cap = b[move.to[0]][move.to[1]];
+      let desc = `AI: ${GLYPHS.b[piece.type]} ${toAN(move.from[0],move.from[1])} → ${toAN(move.to[0],move.to[1])}`;
+      if (cap) desc += ` ×${GLYPHS.w[cap.type]}`;
+      if (move.castling) desc += ' (castle)';
+      const nb = applyMove(b, move);
+      const newCr = { ...currentCr };
+      if (piece.type === 'k' && piece.color === 'b') { newCr.bK = false; newCr.bQ = false; }
+      if (piece.type === 'r' && piece.color === 'b') { if (move.from[1]===0) newCr.bQ=false; if (move.from[1]===7) newCr.bK=false; }
+      const newEp: [number,number] | null = (piece.type==='p' && Math.abs(move.to[0]-move.from[0])===2) ? [(move.from[0]+move.to[0])/2, move.to[1]] : null;
+      setBoard(nb); setCr(newCr); setEp(newEp);
+      const wMoves = getAllLegalMoves(nb, 'w', newEp, newCr);
+      if (wMoves.length === 0) {
+        const msg = isInCheck(nb,'w') ? 'Checkmate! AI wins 🤖' : 'Stalemate — draw!';
+        desc += ` — ${msg}`; setStatus(msg); setGameOver(true);
+      } else if (isInCheck(nb,'w')) { desc += ' ⚠️ Check!'; setStatus('Check! ⚠️ Get your king to safety.'); }
+      else setStatus('Your turn ♔');
+      setLog(p => [desc, ...p].slice(0,40)); setTurn('w'); setAiThinking(false);
+    }, 350);
   }, []);
 
-  useEffect(() => {
-    if (!autoPlay || game.winner !== null) return;
-    timerRef.current = setTimeout(() => {
-      setGame((prev) => rollAndMove(prev));
-    }, 900);
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [autoPlay, game, rollAndMove]);
+  const handleClick = (row: number, col: number) => {
+    if (turn !== 'w' || gameOver || aiThinking) return;
+    const piece = board[row][col];
+    if (selected) {
+      const move = legalMoves.find(m => m.to[0]===row && m.to[1]===col && (!m.promotion || m.promotion==='q'));
+      if (move) {
+        const final = move.promotion ? { ...move, promotion: 'q' as ChessPieceType } : move;
+        const mp = board[selected[0]][selected[1]]!;
+        const cap = board[row][col];
+        let desc = `You: ${GLYPHS.w[mp.type]} ${toAN(selected[0],selected[1])} → ${toAN(row,col)}`;
+        if (cap) desc += ` ×${GLYPHS.b[cap.type]}`;
+        if (final.promotion) desc += ' =♕';
+        if (final.castling) desc += ' (castle)';
+        const nb = applyMove(board, final);
+        const newCr = { ...cr };
+        if (mp.type==='k') { newCr.wK=false; newCr.wQ=false; }
+        if (mp.type==='r') { if (selected[1]===0) newCr.wQ=false; if (selected[1]===7) newCr.wK=false; }
+        const newEp: [number,number] | null = (mp.type==='p' && Math.abs(row-selected[0])===2) ? [(selected[0]+row)/2, col] : null;
+        setBoard(nb); setCr(newCr); setEp(newEp); setSelected(null); setLegalMoves([]);
+        const bMoves = getAllLegalMoves(nb, 'b', newEp, newCr);
+        if (bMoves.length === 0) {
+          const msg = isInCheck(nb,'b') ? 'Checkmate! You win! 🎉' : 'Stalemate — draw!';
+          desc += ` — ${msg}`; setLog(p => [desc,...p].slice(0,40)); setStatus(msg); setGameOver(true); return;
+        }
+        if (isInCheck(nb,'b')) desc += ' ⚠️ Check!';
+        setLog(p => [desc,...p].slice(0,40)); setTurn('b'); doAIMove(nb, newCr); return;
+      }
+      if (piece?.color === 'w') { setSelected([row,col]); setLegalMoves(getLegalMoves(board,row,col,ep,cr)); return; }
+      setSelected(null); setLegalMoves([]); return;
+    }
+    if (piece?.color === 'w') { setSelected([row,col]); setLegalMoves(getLegalMoves(board,row,col,ep,cr)); }
+  };
 
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = 0;
-  }, [game.log]);
+  const isTarget = (r: number, c: number) => legalMoves.some(m => m.to[0]===r && m.to[1]===c);
+  const kingPos = findKing(board, 'w');
+  const kingInCheck = !gameOver && kingPos && isInCheck(board, 'w');
 
-  const boardCells = Array.from({ length: 100 }, (_, i) => {
-    const num = 100 - i;
-    const isSnakeHead = num in SNAKES;
-    const isLadderBottom = num in LADDERS;
-    const isSnakeTail = Object.values(SNAKES).includes(num);
-    const isLadderTop = Object.values(LADDERS).includes(num);
-    const p1Here = game.positions[0] === num;
-    const p2Here = game.positions[1] === num;
-    const isHighlight = game.moveHighlight === num;
-
-    const displayRow = Math.floor((num - 1) / 10);
-    const displayCol = displayRow % 2 === 0 ? (num - 1) % 10 : 9 - (num - 1) % 10;
-    const gridRow = 9 - displayRow;
-    const gridCol = displayCol;
-
-    let bg = "#1a1a2e";
-    if (isSnakeHead) bg = "#3d0000";
-    else if (isLadderBottom) bg = "#003d1a";
-    else if (isSnakeTail) bg = "#5a1a1a";
-    else if (isLadderTop) bg = "#1a5a2a";
-    else if ((gridRow + gridCol) % 2 === 0) bg = "#16213e";
-
-    if (isHighlight) bg = "#4a3500";
-
-    return { num, gridRow, gridCol, isSnakeHead, isLadderBottom, isSnakeTail, isLadderTop, p1Here, p2Here, isHighlight, bg };
-  });
+  const SQ = 52;
 
   return (
     <div
-      style={{
-        position: "fixed", inset: 0, zIndex: 10000,
-        background: "rgba(0,0,0,0.95)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: "1rem", fontFamily: "Kanit, sans-serif"
-      }}
+      style={{ position:"fixed", inset:0, zIndex:10000, background:"rgba(0,0,0,0.95)",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        padding:"1rem", fontFamily:"Kanit, sans-serif" }}
       onClick={onClose}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#0c0c1a",
-          border: "1px solid rgba(215,226,234,0.15)",
-          borderRadius: "1.5rem",
-          padding: "1.5rem",
-          maxWidth: "900px",
-          width: "100%",
-          maxHeight: "95vh",
-          overflowY: "auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: "1rem"
-        }}
+        onClick={e => e.stopPropagation()}
+        style={{ background:"#0c0c1a", border:"1px solid rgba(215,226,234,0.15)",
+          borderRadius:"1.5rem", padding:"1.5rem", maxWidth:"840px", width:"100%",
+          maxHeight:"95vh", overflowY:"auto", display:"flex", flexDirection:"column", gap:"1rem" }}
       >
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
           <div>
-            <h2 style={{ color: "#d7e2ea", fontSize: "1.4rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em" }}>
-              🎲 Snake & Ladder — Auto Play
+            <h2 style={{ color:"#d7e2ea", fontSize:"1.4rem", fontWeight:800, textTransform:"uppercase", letterSpacing:"0.1em" }}>
+              ♟ Chess — Human vs AI
             </h2>
-            <p style={{ color: "rgba(215,226,234,0.45)", fontSize: "0.72rem", letterSpacing: "0.14em", textTransform: "uppercase", marginTop: "0.2rem" }}>
-              Watching P1 🔴 vs P2 🔵 battle it out
+            <p style={{ color:"rgba(215,226,234,0.5)", fontSize:"0.72rem", letterSpacing:"0.14em", textTransform:"uppercase", marginTop:"0.2rem" }}>
+              {status}
             </p>
           </div>
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-            <button
-              onClick={() => setGame(initState())}
-              style={{
-                background: "rgba(215,226,234,0.1)", border: "1px solid rgba(215,226,234,0.2)",
-                color: "#d7e2ea", borderRadius: "0.5rem", padding: "0.4rem 0.8rem",
-                fontSize: "0.75rem", fontWeight: 600, cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.1em",
-                fontFamily: "inherit"
-              }}
-            >
+          <div style={{ display:"flex", gap:"0.5rem", alignItems:"center" }}>
+            <button onClick={reset}
+              style={{ background:"rgba(215,226,234,0.1)", border:"1px solid rgba(215,226,234,0.2)",
+                color:"#d7e2ea", borderRadius:"0.5rem", padding:"0.4rem 0.8rem",
+                fontSize:"0.75rem", fontWeight:600, cursor:"pointer", textTransform:"uppercase",
+                letterSpacing:"0.1em", fontFamily:"inherit" }}>
               New Game
             </button>
-            <button
-              onClick={onClose}
-              style={{
-                background: "rgba(215,226,234,0.1)", border: "1px solid rgba(215,226,234,0.2)",
-                color: "#d7e2ea", borderRadius: "50%", width: "2.2rem", height: "2.2rem",
-                display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer"
-              }}
-            >
+            <button onClick={onClose}
+              style={{ background:"rgba(215,226,234,0.1)", border:"1px solid rgba(215,226,234,0.2)",
+                color:"#d7e2ea", borderRadius:"50%", width:"2.2rem", height:"2.2rem",
+                display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>
               <X size={16} />
             </button>
           </div>
         </div>
 
-        {/* Score + Dice */}
-        <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-          {[0, 1].map((p) => (
-            <div
-              key={p}
-              style={{
-                flex: 1, minWidth: "120px",
-                background: game.currentPlayer === p && !game.winner ? "rgba(182,0,168,0.15)" : "rgba(215,226,234,0.05)",
-                border: `1px solid ${game.currentPlayer === p && !game.winner ? "rgba(182,0,168,0.5)" : "rgba(215,226,234,0.1)"}`,
-                borderRadius: "0.75rem", padding: "0.75rem 1rem"
-              }}
-            >
-              <div style={{ color: "rgba(215,226,234,0.5)", fontSize: "0.65rem", textTransform: "uppercase", letterSpacing: "0.12em" }}>
-                {p === 0 ? "P1 🔴" : "P2 🔵"}
-              </div>
-              <div style={{ color: "#fff", fontSize: "1.6rem", fontWeight: 900, lineHeight: 1 }}>
-                {game.positions[p]}
-              </div>
-              <div style={{ color: "rgba(215,226,234,0.4)", fontSize: "0.65rem", textTransform: "uppercase" }}>
-                {game.winner === p ? "🏆 Winner!" : `square`}
-              </div>
-            </div>
-          ))}
-          <div style={{
-            flex: 1, minWidth: "120px",
-            background: "rgba(215,226,234,0.05)",
-            border: "1px solid rgba(215,226,234,0.1)",
-            borderRadius: "0.75rem", padding: "0.75rem 1rem",
-            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center"
-          }}>
-            <div style={{ fontSize: "2.2rem" }}>
-              {["⚀","⚁","⚂","⚃","⚄","⚅"][game.dice - 1]}
-            </div>
-            <div style={{ color: "rgba(215,226,234,0.4)", fontSize: "0.65rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>
-              Last roll: {game.dice}
-            </div>
-          </div>
-        </div>
-
-        {/* Winner banner */}
-        {game.winner !== null && (
-          <div style={{
-            background: "linear-gradient(135deg, #7621b0, #b600a8)",
-            borderRadius: "0.75rem", padding: "1rem",
-            textAlign: "center", color: "#fff", fontWeight: 800,
-            fontSize: "1.1rem", textTransform: "uppercase", letterSpacing: "0.12em"
-          }}>
-            🎉 {game.winner === 0 ? "P1 🔴" : "P2 🔵"} wins the game!
-          </div>
-        )}
-
         {/* Board + Log */}
-        <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+        <div style={{ display:"flex", gap:"1.25rem", flexWrap:"wrap", alignItems:"flex-start" }}>
           {/* Board */}
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(10, ${CELL_SIZE}px)`,
-            gridTemplateRows: `repeat(10, ${CELL_SIZE}px)`,
-            gap: "2px",
-            flex: "0 0 auto",
-            position: "relative"
-          }}>
-            {boardCells.map(({ num, gridRow, gridCol, isSnakeHead, isLadderBottom, p1Here, p2Here, bg }) => (
-              <div
-                key={num}
-                style={{
-                  gridRow: gridRow + 1,
-                  gridColumn: gridCol + 1,
-                  background: bg,
-                  borderRadius: "4px",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  position: "relative",
-                  fontSize: "0.55rem",
-                  color: "rgba(215,226,234,0.5)",
-                  fontWeight: 600,
-                  border: isSnakeHead ? "1px solid #ff4444" : isLadderBottom ? "1px solid #44ff88" : "none",
-                  transition: "background 0.3s ease"
-                }}
-              >
-                <span style={{ position: "absolute", top: "2px", left: "3px", fontSize: "0.5rem", opacity: 0.6 }}>{num}</span>
-                {isSnakeHead && <span style={{ fontSize: "0.85rem" }}>🐍</span>}
-                {isLadderBottom && <span style={{ fontSize: "0.85rem" }}>🪜</span>}
-                {(p1Here || p2Here) && (
-                  <div style={{ display: "flex", gap: "1px", position: "absolute", bottom: "2px" }}>
-                    {p1Here && <span style={{ fontSize: "0.75rem" }}>🔴</span>}
-                    {p2Here && <span style={{ fontSize: "0.75rem" }}>🔵</span>}
-                  </div>
-                )}
+          <div style={{ flex:"0 0 auto" }}>
+            {board.map((rowArr, r) => (
+              <div key={r} style={{ display:"flex", alignItems:"center" }}>
+                <span style={{ width:"1.2rem", color:"rgba(215,226,234,0.35)", fontSize:"0.65rem", textAlign:"center", userSelect:"none" }}>
+                  {8 - r}
+                </span>
+                {rowArr.map((piece, c) => {
+                  const light = (r+c)%2===0;
+                  const isSel = selected?.[0]===r && selected?.[1]===c;
+                  const isTgt = isTarget(r,c);
+                  const isCheckKing = kingInCheck && kingPos?.[0]===r && kingPos?.[1]===c;
+                  let bg = light ? '#f0d9b5' : '#b58863';
+                  if (isSel) bg = '#7fc97f';
+                  else if (isTgt) bg = light ? '#cdd26a' : '#aaa23a';
+                  if (isCheckKing) bg = '#e05555';
+                  return (
+                    <div key={c} onClick={() => handleClick(r,c)}
+                      style={{ width:`${SQ}px`, height:`${SQ}px`, background:bg,
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        cursor:(turn==='w'&&!gameOver&&!aiThinking)?"pointer":"default",
+                        fontSize:"2rem", lineHeight:1, userSelect:"none", position:"relative",
+                        transition:"background 0.12s" }}>
+                      {piece && (
+                        <span style={{
+                          color: piece.color==='w' ? '#fff' : '#111',
+                          textShadow: piece.color==='w'
+                            ? '0 1px 4px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.8)'
+                            : '0 1px 3px rgba(255,255,255,0.2)'
+                        }}>
+                          {GLYPHS[piece.color][piece.type]}
+                        </span>
+                      )}
+                      {isTgt && !piece && (
+                        <div style={{ width:"14px", height:"14px", borderRadius:"50%", background:"rgba(0,0,0,0.22)" }} />
+                      )}
+                      {isTgt && piece && (
+                        <div style={{ position:"absolute", inset:0, border:"3px solid rgba(0,0,0,0.3)", borderRadius:"2px", pointerEvents:"none" }} />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ))}
+            {/* File labels */}
+            <div style={{ display:"flex", paddingLeft:"1.2rem" }}>
+              {FILES.map(l => (
+                <div key={l} style={{ width:`${SQ}px`, textAlign:"center", color:"rgba(215,226,234,0.35)", fontSize:"0.65rem", marginTop:"0.25rem", userSelect:"none" }}>{l}</div>
+              ))}
+            </div>
           </div>
 
           {/* Log */}
-          <div style={{ flex: 1, minWidth: "180px", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <div style={{ color: "rgba(215,226,234,0.5)", fontSize: "0.65rem", textTransform: "uppercase", letterSpacing: "0.12em" }}>
-              Game Log
-            </div>
-            <div
-              ref={logRef}
-              style={{
-                background: "rgba(0,0,0,0.3)",
-                border: "1px solid rgba(215,226,234,0.08)",
-                borderRadius: "0.5rem",
-                padding: "0.75rem",
-                height: "360px",
-                overflowY: "auto",
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.4rem"
-              }}
-            >
-              {game.log.map((entry, i) => (
-                <div
-                  key={i}
-                  style={{
-                    color: i === 0 ? "#d7e2ea" : "rgba(215,226,234,0.4)",
-                    fontSize: "0.72rem",
-                    lineHeight: 1.5,
-                    fontWeight: i === 0 ? 500 : 400,
-                    borderBottom: "1px solid rgba(215,226,234,0.05)",
-                    paddingBottom: "0.3rem"
-                  }}
-                >
+          <div style={{ flex:1, minWidth:"160px", display:"flex", flexDirection:"column", gap:"0.5rem" }}>
+            <div style={{ color:"rgba(215,226,234,0.5)", fontSize:"0.65rem", textTransform:"uppercase", letterSpacing:"0.12em" }}>Move Log</div>
+            <div ref={logRef} style={{ background:"rgba(0,0,0,0.3)", border:"1px solid rgba(215,226,234,0.08)",
+              borderRadius:"0.5rem", padding:"0.75rem", height:"420px", overflowY:"auto",
+              display:"flex", flexDirection:"column", gap:"0.4rem" }}>
+              {log.map((entry, i) => (
+                <div key={i} style={{ color: i===0 ? "#d7e2ea" : "rgba(215,226,234,0.4)",
+                  fontSize:"0.72rem", lineHeight:1.5, fontWeight: i===0?500:400,
+                  borderBottom:"1px solid rgba(215,226,234,0.05)", paddingBottom:"0.3rem" }}>
                   {entry}
                 </div>
               ))}
             </div>
-
             {/* Legend */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:"0.5rem" }}>
               {[
-                { icon: "🐍", label: "Snake head (slide down)", color: "#ff4444" },
-                { icon: "🪜", label: "Ladder bottom (climb up)", color: "#44ff88" },
-              ].map(({ icon, label, color }) => (
-                <div key={label} style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                  <span style={{ fontSize: "0.85rem" }}>{icon}</span>
-                  <span style={{ color: color, fontSize: "0.65rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</span>
+                { color:"#7fc97f", label:"Selected" },
+                { color:"#cdd26a", label:"Legal move" },
+                { color:"#e05555", label:"King in check" }
+              ].map(({ color, label }) => (
+                <div key={label} style={{ display:"flex", alignItems:"center", gap:"0.3rem" }}>
+                  <div style={{ width:"10px", height:"10px", background:color, borderRadius:"2px" }} />
+                  <span style={{ color:"rgba(215,226,234,0.4)", fontSize:"0.62rem", textTransform:"uppercase", letterSpacing:"0.08em" }}>{label}</span>
                 </div>
               ))}
             </div>
+            {gameOver && (
+              <button onClick={reset}
+                style={{ background:"linear-gradient(135deg,#7621b0,#b600a8)", border:"none",
+                  color:"#fff", borderRadius:"0.5rem", padding:"0.6rem 1rem",
+                  fontSize:"0.8rem", fontWeight:700, cursor:"pointer", textTransform:"uppercase",
+                  letterSpacing:"0.1em", fontFamily:"inherit" }}>
+                Play Again
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1431,7 +1567,7 @@ function ContactSection() {
 
   return (
     <>
-      {showGame && <SnakeLadderGame onClose={() => setShowGame(false)} />}
+      {showGame && <ChessGame onClose={() => setShowGame(false)} />}
 
       <section
         id="contact"
