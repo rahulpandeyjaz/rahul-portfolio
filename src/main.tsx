@@ -1138,16 +1138,36 @@ function AboutSection() {
       className="relative flex min-h-screen items-center justify-center overflow-hidden bg-ink px-5 py-20 sm:px-8 md:px-10"
     >
       <FadeIn delay={0.1} x={-80} y={0} duration={0.9} className="decor decor-moon">
-        <div className="decor-orb decor-blue">CTR</div>
+        <motion.div
+          animate={{ y: [0, -22, 0, 14, 0], x: [0, 10, 0, -8, 0] }}
+          transition={{ duration: 5.2, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <div className="decor-orb decor-blue">CTR</div>
+        </motion.div>
       </FadeIn>
       <FadeIn delay={0.15} x={80} y={0} duration={0.9} className="decor decor-cube">
-        <div className="decor-cube-shape">CVR</div>
+        <motion.div
+          animate={{ y: [0, 18, 0, -24, 0], x: [0, -12, 0, 9, 0] }}
+          transition={{ duration: 6.1, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
+        >
+          <div className="decor-cube-shape">CVR</div>
+        </motion.div>
       </FadeIn>
       <FadeIn delay={0.25} x={-80} y={0} duration={0.9} className="decor decor-smile">
-        <div className="decor-ring">ROAS</div>
+        <motion.div
+          animate={{ y: [0, -16, 0, 20, 0], x: [0, 14, 0, -10, 0] }}
+          transition={{ duration: 4.8, repeat: Infinity, ease: "easeInOut", delay: 1.1 }}
+        >
+          <div className="decor-ring">ROAS</div>
+        </motion.div>
       </FadeIn>
       <FadeIn delay={0.3} x={80} y={0} duration={0.9} className="decor decor-cursor">
-        <div className="decor-arrow">CAC</div>
+        <motion.div
+          animate={{ y: [0, 20, 0, -18, 0], x: [0, -9, 0, 12, 0] }}
+          transition={{ duration: 5.6, repeat: Infinity, ease: "easeInOut", delay: 1.8 }}
+        >
+          <div className="decor-arrow">CAC</div>
+        </motion.div>
       </FadeIn>
 
       <div className="relative z-10 flex max-w-5xl flex-col items-center gap-10 text-center sm:gap-14 md:gap-16">
