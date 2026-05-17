@@ -1395,6 +1395,179 @@ function SkillsSection() {
   );
 }
 
+// ─── Project Full Modal ────────────────────────────────────────────────────────
+
+function ProjectModal({ project, onClose }: { project: Project; onClose: () => void }) {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [onClose]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.22 }}
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "rgba(0,0,0,0.88)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "1.25rem",
+        overflowY: "auto"
+      }}
+    >
+      {/* Close button */}
+      <button
+        onClick={onClose}
+        aria-label="Close"
+        style={{
+          position: "fixed",
+          top: "1.25rem",
+          right: "1.25rem",
+          zIndex: 10000,
+          background: "rgba(215,226,234,0.12)",
+          border: "1px solid rgba(215,226,234,0.25)",
+          borderRadius: "50%",
+          width: "2.75rem",
+          height: "2.75rem",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#d7e2ea",
+          cursor: "pointer",
+          transition: "background 200ms ease"
+        }}
+      >
+        <X size={18} />
+      </button>
+
+      {/* Card */}
+      <motion.div
+        initial={{ scale: 0.93, opacity: 0, y: 28 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.93, opacity: 0, y: 28 }}
+        transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: "1100px",
+          border: "2px solid #d7e2ea",
+          borderRadius: "clamp(28px,3vw,48px)",
+          background: "#0c0c0c",
+          padding: "clamp(1.5rem,3vw,2.75rem)",
+          color: "#d7e2ea",
+          fontFamily: "'Kanit', sans-serif",
+          marginTop: "auto",
+          marginBottom: "auto"
+        }}
+      >
+        {/* Top: number + title block */}
+        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "clamp(1rem,3vw,3rem)", alignItems: "start" }}>
+          <span style={{
+            color: "#d7e2ea",
+            fontSize: "clamp(3rem,10vw,120px)",
+            fontWeight: 900,
+            lineHeight: 0.85,
+            userSelect: "none"
+          }}>
+            {project.number}
+          </span>
+          <div>
+            <span style={{
+              display: "block",
+              marginBottom: "0.85rem",
+              fontSize: "clamp(0.85rem,1.6vw,1.4rem)",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em"
+            }}>
+              {project.category}
+            </span>
+            <h2 style={{
+              marginBottom: "0.85rem",
+              fontSize: "clamp(1.4rem,2.6vw,2.6rem)",
+              fontWeight: 400,
+              lineHeight: 1.15
+            }}>
+              {project.name}
+            </h2>
+            <p style={{
+              color: "rgba(215,226,234,0.68)",
+              fontSize: "clamp(0.92rem,1.25vw,1.12rem)",
+              fontWeight: 300,
+              lineHeight: 1.6,
+              maxWidth: "680px"
+            }}>
+              {project.summary}
+            </p>
+            {/* Metric pills */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "1.1rem" }}>
+              {project.metrics.map((metric) => (
+                <strong
+                  key={metric}
+                  style={{
+                    border: "1px solid rgba(215,226,234,0.22)",
+                    borderRadius: "9999px",
+                    padding: "0.35rem 0.85rem",
+                    fontSize: "0.78rem",
+                    fontWeight: 500,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase"
+                  }}
+                >
+                  {metric}
+                </strong>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Full dashboard image */}
+        <div style={{ marginTop: "clamp(1.75rem,4vw,3rem)" }}>
+          <img
+            src={project.image}
+            alt={`${project.name} campaign dashboard`}
+            style={{
+              width: "100%",
+              display: "block",
+              borderRadius: "clamp(16px,2vw,28px)",
+              border: "1px solid rgba(215,226,234,0.22)",
+              background: "#ffffff",
+              boxShadow: "0 32px 80px rgba(0,0,0,0.55)",
+              objectFit: "cover"
+            }}
+          />
+        </div>
+
+        {/* Footer hint */}
+        <p style={{
+          marginTop: "1.25rem",
+          textAlign: "center",
+          color: "rgba(215,226,234,0.25)",
+          fontSize: "0.68rem",
+          letterSpacing: "0.18em",
+          textTransform: "uppercase"
+        }}>
+          Press Esc or click outside to close
+        </p>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ─── Project Card ─────────────────────────────────────────────────────────────
 
 function ProjectCard({
@@ -1402,13 +1575,13 @@ function ProjectCard({
   index,
   progress,
   total,
-  onImageClick
+  onCardClick
 }: {
   project: Project;
   index: number;
   progress: MotionValue<number>;
   total: number;
-  onImageClick: (src: string, alt: string) => void;
+  onCardClick: (project: Project) => void;
 }) {
   const scaleStart = index / total;
   const scaleEnd = (index + 1) / total;
@@ -1439,15 +1612,14 @@ function ProjectCard({
         </div>
       </div>
 
+      {/* Entire image area is the click target */}
       <div
         role="button"
         tabIndex={0}
-        aria-label={`View ${project.name} dashboard full size`}
-        onClick={() => onImageClick(project.image, `${project.name} campaign dashboard`)}
+        aria-label={`Expand ${project.name} full case`}
+        onClick={() => onCardClick(project)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            onImageClick(project.image, `${project.name} campaign dashboard`);
-          }
+          if (e.key === "Enter" || e.key === " ") onCardClick(project);
         }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
@@ -1509,7 +1681,7 @@ function ProjectCard({
             }}
           >
             <ZoomIn size={15} />
-            View full size
+            Open full case
           </div>
         </div>
       </div>
@@ -1521,7 +1693,7 @@ function ProjectCard({
 
 function ProjectsSection() {
   const ref = useRef<HTMLElement | null>(null);
-  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+  const [activeProject, setActiveProject] = useState<Project | null>(null);
 
   const { scrollYProgress } = useScroll({
     target: ref,
@@ -1530,11 +1702,10 @@ function ProjectsSection() {
 
   return (
     <>
-      {lightbox && (
-        <Lightbox
-          src={lightbox.src}
-          alt={lightbox.alt}
-          onClose={() => setLightbox(null)}
+      {activeProject && (
+        <ProjectModal
+          project={activeProject}
+          onClose={() => setActiveProject(null)}
         />
       )}
 
@@ -1561,7 +1732,7 @@ function ProjectsSection() {
                 index={index}
                 total={projects.length}
                 progress={scrollYProgress}
-                onImageClick={(src, alt) => setLightbox({ src, alt })}
+                onCardClick={(p) => setActiveProject(p)}
               />
             </div>
           ))}

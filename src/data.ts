@@ -182,7 +182,7 @@ export const workExperience: WorkExp[] = [
     location: "Bengaluru, India (On-site)",
     period: "Aug 2024 – Mar 2025",
     highlights: [
-      "Managed paid media for 108 Amazon sellers across softline verticals on an INR 50–60L monthly media budget",
+      "Managed paid media for 108 Amazon sellers across softline verticals on an INR 70–80L monthly media budget (1 Cr+ during sale season)",
       "35% avg ROI increase through data-driven keyword optimisation, automated bid strategy frameworks, and A/B testing",
       "40% Republic Day campaign sales spike alongside 18% ACOS reduction through real-time budget reallocation",
       "Ranked 2nd floor-wide in Amazon AI certification across a 19-analyst cohort; drove 1,519 AMR registrations with 499 confirmations"
