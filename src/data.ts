@@ -54,7 +54,7 @@ export const certificateProof: ProofItem[] = [
 
 export const metricProof: ProofItem[] = [
   { title: "Portfolio Ad Revenue", eyebrow: "23-day active window", value: "INR 531.82K" },
-  { title: "Total Orders", eyebrow: "Across campaign portfolio", value: "1,019" },
+  { title: "Campaigns Built", eyebrow: "Across campaign portfolio", value: "1,019+" },
   { title: "Average ROAS", eyebrow: "Portfolio performance", value: "4.9x" },
   { title: "Best ROAS", eyebrow: "High-efficiency account", value: "6.4x" },
   { title: "Lowest ACOS", eyebrow: "Efficiency winner", value: "15.62%" },

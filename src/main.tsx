@@ -395,12 +395,8 @@ function SnakeLadderGame({ onClose }: { onClose: () => void }) {
     const p2Here = game.positions[1] === num;
     const isHighlight = game.moveHighlight === num;
 
-    // compute display row for alternating direction
     const displayRow = Math.floor((num - 1) / 10);
     const displayCol = displayRow % 2 === 0 ? (num - 1) % 10 : 9 - (num - 1) % 10;
-    // i goes 0=100, 1=99...
-    // We need to map num to grid position
-    // row from top = 9 - displayRow
     const gridRow = 9 - displayRow;
     const gridCol = displayCol;
 
@@ -717,6 +713,8 @@ function ProofTile({ item }: { item: (typeof certificateProof)[number] | (typeof
   );
 }
 
+// ─── Marquee Row — RAF-based with hover pause & wheel/touch scroll ─────────────
+
 function MarqueeRow({
   items,
   direction
@@ -724,33 +722,159 @@ function MarqueeRow({
   items: typeof certificateProof | typeof metricProof;
   direction: "left" | "right";
 }) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [offset, setOffset] = useState(0);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  // firstSetRef measures exactly one copy's width (tiles + internal gaps + trailing gap)
+  // so the loop stride is pixel-perfect and tiles never vanish at the wrap point.
+  const firstSetRef = useRef<HTMLDivElement | null>(null);
+  // posRef stores current translateX in px.
+  // "left": starts at 0, decreases; "right": starts at -320 for visual offset, increases.
+  const posRef = useRef(direction === "right" ? -320 : 0);
+  const pausedRef = useRef(false);
+  const lastTouchXRef = useRef(0);
+  const [isPaused, setIsPaused] = useState(false);
 
+  const SPEED = 0.85; // px per frame
+
+  // RAF animation loop
   useEffect(() => {
-    const onScroll = () => {
-      const rect = ref.current?.getBoundingClientRect();
-      const sectionTop = rect ? window.scrollY + rect.top : 0;
-      setOffset((window.scrollY - sectionTop + window.innerHeight) * 0.3);
+    let raf: number;
+
+    const tick = () => {
+      const track = trackRef.current;
+      if (track && !pausedRef.current) {
+        // Use firstSetRef for an exact stride; fall back to /3 before first paint
+        const singleWidth = firstSetRef.current
+          ? firstSetRef.current.offsetWidth
+          : track.scrollWidth / 3;
+
+        if (direction === "left") {
+          posRef.current -= SPEED;
+          if (posRef.current <= -singleWidth) posRef.current += singleWidth;
+        } else {
+          posRef.current += SPEED;
+          if (posRef.current >= singleWidth) posRef.current -= singleWidth;
+        }
+
+        track.style.transform = `translateX(${posRef.current}px)`;
+      }
+      raf = requestAnimationFrame(tick);
     };
 
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [direction]);
+
+  // Wheel scroll when paused — passive: false so we can preventDefault
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (!pausedRef.current || !trackRef.current) return;
+      e.preventDefault();
+      const track = trackRef.current;
+      const singleWidth = firstSetRef.current
+        ? firstSetRef.current.offsetWidth
+        : track.scrollWidth / 3;
+      // Horizontal wheel takes priority, fallback to vertical
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      posRef.current -= delta * 0.55;
+      // Normalise within one segment to keep seamless looping
+      if (posRef.current < -singleWidth) posRef.current += singleWidth;
+      if (posRef.current > singleWidth) posRef.current -= singleWidth;
+      track.style.transform = `translateX(${posRef.current}px)`;
+    };
+
+    container.addEventListener("wheel", onWheel, { passive: false });
+    return () => container.removeEventListener("wheel", onWheel);
   }, []);
 
-  const tripled = [...items, ...items, ...items];
-  const translateX = direction === "right" ? offset - 200 : -(offset - 200);
+  // Touch drag support (mobile)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    pausedRef.current = true;
+    setIsPaused(true);
+    lastTouchXRef.current = e.touches[0].clientX;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!trackRef.current) return;
+    const dx = e.touches[0].clientX - lastTouchXRef.current;
+    lastTouchXRef.current = e.touches[0].clientX;
+    const singleWidth = firstSetRef.current
+      ? firstSetRef.current.offsetWidth
+      : trackRef.current.scrollWidth / 3;
+    posRef.current += dx;
+    if (posRef.current < -singleWidth) posRef.current += singleWidth;
+    if (posRef.current > singleWidth) posRef.current -= singleWidth;
+    trackRef.current.style.transform = `translateX(${posRef.current}px)`;
+  };
+
+  const handleTouchEnd = () => {
+    pausedRef.current = false;
+    setIsPaused(false);
+  };
 
   return (
     <div
-      ref={ref}
-      className="marquee-row"
-      style={{ transform: `translateX(${translateX}px)`, willChange: "transform" }}
+      ref={containerRef}
+      style={{
+        overflow: "hidden",
+        cursor: isPaused ? "grab" : "default",
+        // Subtle highlight ring when paused so user knows they're in control
+        outline: isPaused ? "1px solid rgba(182,0,168,0.35)" : "1px solid transparent",
+        borderRadius: "0.5rem",
+        transition: "outline 200ms ease"
+      }}
+      onMouseEnter={() => { pausedRef.current = true; setIsPaused(true); }}
+      onMouseLeave={() => { pausedRef.current = false; setIsPaused(false); }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
-      {tripled.map((item, index) => (
-        <ProofTile item={item} key={`${item.title}-${index}`} />
-      ))}
+      {/* Pause indicator */}
+      {isPaused && (
+        <div
+          style={{
+            position: "absolute",
+            top: "0.4rem",
+            right: "0.75rem",
+            zIndex: 10,
+            color: "rgba(215,226,234,0.45)",
+            fontSize: "0.6rem",
+            fontWeight: 600,
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
+            pointerEvents: "none",
+            userSelect: "none"
+          }}
+        >
+          ● Scroll to browse
+        </div>
+      )}
+      <div
+        ref={trackRef}
+        className="marquee-row"
+        style={{ willChange: "transform" }}
+      >
+        {/* Three wrapped sets — firstSetRef measures one set's exact pixel stride */}
+        {[0, 1, 2].map((copy) => (
+          <div
+            key={copy}
+            ref={copy === 0 ? firstSetRef : undefined}
+            style={{
+              display: "flex",
+              gap: "0.75rem",
+              paddingRight: "0.75rem", // trailing gap ensures seamless join between sets
+              flexShrink: 0
+            }}
+          >
+            {items.map((item, index) => (
+              <ProofTile item={item} key={`${item.title}-${index}`} />
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -758,7 +882,7 @@ function MarqueeRow({
 function MarqueeSection() {
   return (
     <section className="overflow-hidden bg-ink pb-10 pt-24 sm:pt-32 md:pt-40">
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3" style={{ position: "relative" }}>
         <MarqueeRow items={certificateProof} direction="right" />
         <MarqueeRow items={metricProof} direction="left" />
       </div>
@@ -843,7 +967,6 @@ function WorkExperienceSection() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Wheel scroll: move content up/down manually when hovered
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -873,20 +996,17 @@ function WorkExperienceSection() {
         </h2>
       </FadeIn>
       <div className="mx-auto max-w-5xl">
-        {/* scroll viewport */}
         <div
           ref={viewportRef}
           style={{ maxHeight: "560px", overflow: "hidden", position: "relative", cursor: "ns-resize" }}
           onMouseEnter={() => { pausedRef.current = true; }}
           onMouseLeave={() => { pausedRef.current = false; }}
         >
-          {/* fade-out top */}
           <div style={{
             position: "absolute", top: 0, left: 0, right: 0, height: "60px",
             background: "linear-gradient(to bottom, #0c0c0c, transparent)",
             pointerEvents: "none", zIndex: 2
           }} />
-          {/* fade-out bottom */}
           <div style={{
             position: "absolute", bottom: 0, left: 0, right: 0, height: "80px",
             background: "linear-gradient(to top, #0c0c0c, transparent)",
@@ -933,6 +1053,148 @@ function WorkExperienceSection() {
   );
 }
 
+// ─── Cartoon Characters for Skills Sidebar ───────────────────────────────────
+// Place transparent-background PNGs at public/assets/chars/
+// Recommended sources: PNGWing, PNGImg, or export with alpha from Illustrator.
+// blend: "multiply" = works on white-bg PNGs (removes white); "screen" = works on black-bg PNGs (removes black)
+const FLOATING_CHARS_DATA = [
+  {
+    image: "/assets/chars/peter-griffin.png",
+    label: "ROAS Hunter",
+    stat: "6.4× ROAS",
+    blend: "multiply" as React.CSSProperties["mixBlendMode"]
+  },
+  {
+    image: "/assets/chars/bojack-horseman.png",
+    label: "Data Driven",
+    stat: "Clean Attribution",
+    blend: "multiply" as React.CSSProperties["mixBlendMode"]
+  },
+  {
+    image: "/assets/chars/doraemon.png",
+    label: "Growth Mode",
+    stat: "+97% Revenue",
+    blend: "multiply" as React.CSSProperties["mixBlendMode"]
+  },
+  {
+    image: "/assets/chars/shinchan.png",
+    label: "On Target",
+    stat: "15.62% ACOS",
+    blend: "screen" as React.CSSProperties["mixBlendMode"]
+  },
+  {
+    image: "/assets/chars/tom-cat.png",
+    label: "Optimizer",
+    stat: "1,019+ Campaigns",
+    blend: "multiply" as React.CSSProperties["mixBlendMode"]
+  },
+  {
+    image: "/assets/chars/bart-simpson-phone.png",
+    label: "Generative AI",
+    stat: "Claude & OpenCode",
+    blend: "screen" as React.CSSProperties["mixBlendMode"]
+  }
+];
+
+type FloatingCharDatum = typeof FLOATING_CHARS_DATA[number];
+
+function FloatingChar({
+  charData,
+  floatDelay,
+  entryDelay,
+  idx
+}: {
+  charData: FloatingCharDatum;
+  floatDelay: number;
+  entryDelay: number;
+  idx: number;
+}) {
+  return (
+    // Outer: continuous gentle float
+    <motion.div
+      animate={{ y: [0, -14, 0] }}
+      transition={{
+        duration: 3.4 + idx * 0.42,
+        repeat: Infinity,
+        ease: "easeInOut",
+        delay: floatDelay
+      }}
+    >
+      {/* Inner: entry + hover */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.5, y: 20 }}
+        whileInView={{
+          opacity: 1,
+          scale: 1,
+          y: 0,
+          transition: { delay: entryDelay, duration: 0.7, ease: [0.34, 1.56, 0.64, 1] }
+        }}
+        whileHover={{
+          scale: 1.1,
+          rotate: idx % 2 === 0 ? 4 : -4,
+          transition: { duration: 0.22, ease: "easeOut" }
+        }}
+        viewport={{ once: true }}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "0.3rem",
+          cursor: "default",
+          userSelect: "none",
+          willChange: "transform"
+        }}
+      >
+        {/* Cartoon character image */}
+        <img
+          src={charData.image}
+          alt={charData.label}
+          loading="lazy"
+          style={{
+            width: "clamp(72px, 7.5vw, 112px)",
+            height: "auto",
+            objectFit: "contain",
+            filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.22)) drop-shadow(0 2px 4px rgba(0,0,0,0.14))"
+          }}
+        />
+
+        {/* Label pill */}
+        <span
+          style={{
+            color: "#0c0c0c",
+            fontSize: "0.56rem",
+            fontWeight: 700,
+            letterSpacing: "0.13em",
+            textTransform: "uppercase",
+            lineHeight: 1,
+            fontFamily: "Kanit, sans-serif",
+            background: "rgba(12,12,12,0.07)",
+            borderRadius: "999px",
+            padding: "0.2rem 0.55rem"
+          }}
+        >
+          {charData.label}
+        </span>
+
+        {/* Stat */}
+        <span
+          style={{
+            color: "rgba(12,12,12,0.45)",
+            fontSize: "0.5rem",
+            fontWeight: 500,
+            letterSpacing: "0.08em",
+            fontFamily: "Kanit, sans-serif"
+          }}
+        >
+          {charData.stat}
+        </span>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── Skills Section ───────────────────────────────────────────────────────────
+
 function SkillsSection() {
   return (
     <section
@@ -944,19 +1206,41 @@ function SkillsSection() {
           Skills
         </h2>
       </FadeIn>
-      <div className="mx-auto max-w-5xl">
-        {services.map((service, index) => (
-          <FadeIn delay={index * 0.1} key={service.number}>
-            <article className="service-row">
-              <span className="service-number">{service.number}</span>
-              <div className="space-y-3">
-                <h3>{service.name}</h3>
-                <p>{service.description}</p>
-              </div>
-            </article>
-          </FadeIn>
-        ))}
+
+      {/* Characters inline with each service row — feet sit on the dividing line */}
+      <div className="mx-auto max-w-7xl">
+        {services.map((service, index) => {
+          const char = FLOATING_CHARS_DATA[index];
+          return (
+            <FadeIn delay={index * 0.1} key={service.number}>
+              <article
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(100px, 0.22fr) 1fr auto",
+                  gap: "clamp(1.25rem, 4vw, 4rem)",
+                  alignItems: "end",
+                  borderTop: "1px solid rgba(12,12,12,0.15)",
+                  paddingTop: "clamp(2rem, 5vw, 3rem)",
+                  paddingBottom: "0"
+                }}
+              >
+                <span className="service-number">{service.number}</span>
+                <div className="space-y-3" style={{ paddingBottom: "clamp(2rem, 5vw, 3rem)" }}>
+                  <h3 style={{ fontSize: "clamp(1rem,2.2vw,2.1rem)", fontWeight: 500, textTransform: "uppercase" }}>{service.name}</h3>
+                  <p style={{ maxWidth: "42rem", fontSize: "clamp(0.85rem,1.6vw,1.25rem)", fontWeight: 300, lineHeight: 1.7, opacity: 0.6 }}>{service.description}</p>
+                </div>
+                {char && (
+                  <div className="hidden lg:block" style={{ flexShrink: 0, alignSelf: "end" }}>
+                    <FloatingChar charData={char} floatDelay={index * 0.35} entryDelay={index * 0.09} idx={index} />
+                  </div>
+                )}
+              </article>
+            </FadeIn>
+          );
+        })}
+        <div style={{ borderTop: "1px solid rgba(12,12,12,0.15)" }} />
       </div>
+
     </section>
   );
 }
@@ -1146,7 +1430,6 @@ function ContactSection() {
     <>
       {showGame && <SnakeLadderGame onClose={() => setShowGame(false)} />}
 
-      {/* relative z-30 ensures this renders above sticky project cards */}
       <section
         id="contact"
         className="relative z-30 bg-ink px-5 py-24 text-center sm:px-8 md:px-10"
@@ -1173,7 +1456,6 @@ function ContactSection() {
               <Linkedin size={18} />
               LinkedIn
             </a>
-            {/* Play a Game button — replaces Portfolio PDF */}
             <button
               onClick={() => setShowGame(true)}
               className="cv-pill"
