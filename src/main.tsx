@@ -1626,19 +1626,237 @@ function ContactSection() {
   );
 }
 
+// ─── Mobile Gate Modal ────────────────────────────────────────────────────────
+
+function MobileGateModal({ onLetMeIn, onChess }: { onLetMeIn: () => void; onChess: () => void }) {
+  // Lock body scroll while modal is open
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.35 }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 99999,
+        background: "rgba(6,6,6,0.96)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "1.5rem",
+        fontFamily: "'Kanit', sans-serif"
+      }}
+    >
+      <motion.div
+        initial={{ scale: 0.88, opacity: 0, y: 32 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        transition={{ delay: 0.1, duration: 0.45, ease: [0.25, 0.1, 0.25, 1] }}
+        style={{
+          width: "100%",
+          maxWidth: "420px",
+          border: "1px solid rgba(215,226,234,0.15)",
+          borderRadius: "28px",
+          background: "linear-gradient(160deg, #111111 0%, #0c0c0c 100%)",
+          boxShadow: "0 40px 100px rgba(0,0,0,0.85), 0 0 0 1px rgba(182,0,168,0.15) inset",
+          padding: "clamp(1.75rem, 6vw, 2.5rem)",
+          textAlign: "center",
+          position: "relative",
+          overflow: "hidden"
+        }}
+      >
+        {/* Glow accent */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: "-60px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "260px",
+            height: "160px",
+            background: "radial-gradient(ellipse at center, rgba(182,0,168,0.28) 0%, transparent 70%)",
+            pointerEvents: "none"
+          }}
+        />
+
+        {/* Icon */}
+        <div style={{
+          fontSize: "2.6rem",
+          marginBottom: "1.1rem",
+          lineHeight: 1
+        }}>
+          🖥️
+        </div>
+
+        {/* Eyebrow label */}
+        <p style={{
+          color: "rgba(215,226,234,0.45)",
+          fontSize: "0.7rem",
+          fontWeight: 500,
+          letterSpacing: "0.22em",
+          textTransform: "uppercase",
+          marginBottom: "0.85rem"
+        }}>
+          Heads up
+        </p>
+
+        {/* Headline */}
+        <h2 style={{
+          background: "linear-gradient(180deg, #8e98a5 0%, #d8e7f0 100%)",
+          WebkitBackgroundClip: "text",
+          backgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          fontSize: "clamp(1.6rem, 7vw, 2.1rem)",
+          fontWeight: 900,
+          lineHeight: 1.1,
+          textTransform: "uppercase",
+          letterSpacing: "-0.01em",
+          marginBottom: "1rem"
+        }}>
+          For the full experience,<br />open me on<br />The Grand Rectangle™
+        </h2>
+
+        {/* Sub-copy */}
+        <p style={{
+          color: "rgba(215,226,234,0.52)",
+          fontSize: "0.88rem",
+          fontWeight: 300,
+          lineHeight: 1.65,
+          marginBottom: "2rem"
+        }}>
+          (That's a laptop or desktop, in case you were wondering.) This portfolio was built for big screens — animations, metrics, campaign dashboards, the works.
+        </p>
+
+        {/* CTA Buttons */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <button
+            onClick={onLetMeIn}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.45rem",
+              width: "100%",
+              borderRadius: "9999px",
+              background: "linear-gradient(123deg, #18011f 7%, #b600a8 37%, #7621b0 72%, #be4c00 100%)",
+              boxShadow: "0 4px 4px rgba(181,1,167,0.25), 4px 4px 12px #7721b1 inset",
+              color: "#ffffff",
+              fontFamily: "inherit",
+              fontWeight: 600,
+              fontSize: "0.82rem",
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              outline: "2px solid #ffffff",
+              outlineOffset: "-3px",
+              padding: "0.9rem 1.75rem",
+              cursor: "pointer",
+              border: "none",
+              transition: "transform 200ms ease, filter 200ms ease"
+            }}
+            onMouseEnter={e => (e.currentTarget.style.filter = "brightness(1.1)")}
+            onMouseLeave={e => (e.currentTarget.style.filter = "brightness(1)")}
+          >
+            Let me in anyway →
+          </button>
+
+          <button
+            onClick={onChess}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.5rem",
+              width: "100%",
+              borderRadius: "9999px",
+              border: "1px solid rgba(215,226,234,0.22)",
+              background: "rgba(215,226,234,0.05)",
+              color: "rgba(215,226,234,0.7)",
+              fontFamily: "inherit",
+              fontWeight: 400,
+              fontSize: "0.8rem",
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              padding: "0.85rem 1.5rem",
+              cursor: "pointer",
+              transition: "background 200ms ease, color 200ms ease"
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = "rgba(215,226,234,0.1)";
+              e.currentTarget.style.color = "#d7e2ea";
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = "rgba(215,226,234,0.05)";
+              e.currentTarget.style.color = "rgba(215,226,234,0.7)";
+            }}
+          >
+            ♟️ I'm just here to play chess
+          </button>
+        </div>
+
+        {/* Footer note */}
+        <p style={{
+          marginTop: "1.5rem",
+          color: "rgba(215,226,234,0.25)",
+          fontSize: "0.65rem",
+          letterSpacing: "0.1em",
+          textTransform: "uppercase"
+        }}>
+          Rahul Pandey — Performance Marketer
+        </p>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 function App() {
+  const [showMobileGate, setShowMobileGate] = useState(false);
+  const [showChessFromGate, setShowChessFromGate] = useState(false);
+
+  useEffect(() => {
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+      || window.innerWidth < 768;
+    if (isMobile) {
+      setShowMobileGate(true);
+    }
+  }, []);
+
+  const handleLetMeIn = () => {
+    setShowMobileGate(false);
+  };
+
+  const handleChessFromGate = () => {
+    setShowMobileGate(false);
+    setShowChessFromGate(true);
+  };
+
   return (
-    <main className="min-h-screen overflow-x-clip bg-ink font-kanit">
-      <HeroSection />
-      <MarqueeSection />
-      <AboutSection />
-      <WorkExperienceSection />
-      <SkillsSection />
-      <ProjectsSection />
-      <ContactSection />
-    </main>
+    <>
+      {showMobileGate && (
+        <MobileGateModal onLetMeIn={handleLetMeIn} onChess={handleChessFromGate} />
+      )}
+      {showChessFromGate && (
+        <ChessGame onClose={() => setShowChessFromGate(false)} />
+      )}
+      <main className="min-h-screen overflow-x-clip bg-ink font-kanit">
+        <HeroSection />
+        <MarqueeSection />
+        <AboutSection />
+        <WorkExperienceSection />
+        <SkillsSection />
+        <ProjectsSection />
+        <ContactSection />
+      </main>
+    </>
   );
 }
 
