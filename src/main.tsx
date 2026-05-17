@@ -1084,46 +1084,6 @@ function AboutSection() {
 }
 
 function WorkExperienceSection() {
-  const innerRef = useRef<HTMLDivElement>(null);
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const pausedRef = useRef(false);
-  const yRef = useRef(0);
-
-  useEffect(() => {
-    let raf: number;
-    const tick = () => {
-      const inner = innerRef.current;
-      if (inner && !pausedRef.current) {
-        yRef.current += 0.65;
-        const halfH = inner.scrollHeight / 2;
-        if (yRef.current >= halfH) yRef.current -= halfH;
-        if (yRef.current < 0) yRef.current = 0;
-        inner.style.transform = `translateY(-${yRef.current}px)`;
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    const onWheel = (e: WheelEvent) => {
-      if (!pausedRef.current) return;
-      e.preventDefault();
-      const inner = innerRef.current;
-      if (!inner) return;
-      const halfH = inner.scrollHeight / 2;
-      yRef.current = Math.max(0, Math.min(yRef.current + e.deltaY * 0.6, halfH - 1));
-      inner.style.transform = `translateY(-${yRef.current}px)`;
-    };
-    viewport.addEventListener("wheel", onWheel, { passive: false });
-    return () => viewport.removeEventListener("wheel", onWheel);
-  }, []);
-
-  const doubled = [...workExperience, ...workExperience];
-
   return (
     <section
       id="experience"
@@ -1134,59 +1094,110 @@ function WorkExperienceSection() {
           Experience
         </h2>
       </FadeIn>
-      <div className="mx-auto max-w-5xl">
-        <div
-          ref={viewportRef}
-          style={{ maxHeight: "560px", overflow: "hidden", position: "relative", cursor: "ns-resize" }}
-          onMouseEnter={() => { pausedRef.current = true; }}
-          onMouseLeave={() => { pausedRef.current = false; }}
-        >
-          <div style={{
-            position: "absolute", top: 0, left: 0, right: 0, height: "60px",
-            background: "linear-gradient(to bottom, #0c0c0c, transparent)",
-            pointerEvents: "none", zIndex: 2
-          }} />
-          <div style={{
-            position: "absolute", bottom: 0, left: 0, right: 0, height: "80px",
-            background: "linear-gradient(to top, #0c0c0c, transparent)",
-            pointerEvents: "none", zIndex: 2
-          }} />
 
-          <div ref={innerRef}>
-            {doubled.map((job: WorkExp, index: number) => (
-              <article
-                key={`${job.company}-${index}`}
-                className="border-t border-mist/10 py-8 sm:py-10 md:py-12"
+      <div className="mx-auto max-w-7xl">
+        {workExperience.map((job: WorkExp, index: number) => (
+          <FadeIn delay={index * 0.1} key={`${job.company}-${index}`}>
+            <article
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(100px, 0.22fr) 1fr",
+                gap: "clamp(1.25rem, 4vw, 4rem)",
+                alignItems: "start",
+                borderTop: "1px solid rgba(215,226,234,0.1)",
+                paddingTop: "clamp(2rem, 5vw, 3rem)",
+                paddingBottom: "clamp(2rem, 5vw, 3rem)"
+              }}
+            >
+              {/* Number */}
+              <span
+                className="hero-heading"
+                style={{
+                  fontSize: "clamp(3rem, 10vw, 140px)",
+                  fontWeight: 900,
+                  lineHeight: 0.85,
+                  paddingTop: "0.25rem"
+                }}
               >
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
-                  <div className="flex-1">
-                    <h3 className="text-[clamp(1rem,2vw,1.55rem)] font-semibold uppercase leading-snug text-mist">
-                      {job.role}
-                    </h3>
-                    <p className="mt-1 text-[clamp(0.85rem,1.4vw,1.1rem)] font-medium text-mist/60">
-                      {job.company} &middot; {job.location}
-                    </p>
-                  </div>
-                  <span className="mt-1 whitespace-nowrap text-[0.78rem] font-medium uppercase tracking-widest text-mist/40 sm:mt-0">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+
+              {/* Content */}
+              <div>
+                {/* Role + Period row */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: "0.5rem 2rem",
+                    marginBottom: "0.35rem"
+                  }}
+                >
+                  <h3
+                    style={{
+                      fontSize: "clamp(1rem, 2.2vw, 2.1rem)",
+                      fontWeight: 500,
+                      textTransform: "uppercase",
+                      color: "#d7e2ea",
+                      lineHeight: 1.2
+                    }}
+                  >
+                    {job.role}
+                  </h3>
+                  <span
+                    style={{
+                      fontSize: "0.78rem",
+                      fontWeight: 500,
+                      letterSpacing: "0.16em",
+                      textTransform: "uppercase",
+                      color: "rgba(215,226,234,0.35)",
+                      whiteSpace: "nowrap",
+                      paddingTop: "0.3rem"
+                    }}
+                  >
                     {job.period}
                   </span>
                 </div>
-                <ul className="mt-5 space-y-2.5">
+
+                {/* Company + Location */}
+                <p
+                  style={{
+                    fontSize: "clamp(0.85rem, 1.4vw, 1.1rem)",
+                    fontWeight: 400,
+                    color: "rgba(215,226,234,0.5)",
+                    marginBottom: "1.25rem",
+                    letterSpacing: "0.04em"
+                  }}
+                >
+                  {job.company} &middot; {job.location}
+                </p>
+
+                {/* Highlights */}
+                <ul style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
                   {job.highlights.map((highlight, i) => (
                     <li
                       key={i}
-                      className="flex gap-3 text-[clamp(0.82rem,1.35vw,1.05rem)] font-light leading-relaxed text-mist/55"
+                      style={{
+                        display: "flex",
+                        gap: "0.75rem",
+                        fontSize: "clamp(0.82rem, 1.35vw, 1.05rem)",
+                        fontWeight: 300,
+                        lineHeight: 1.65,
+                        color: "rgba(215,226,234,0.55)"
+                      }}
                     >
-                      <span className="mt-[3px] shrink-0 text-mist/30">—</span>
+                      <span style={{ marginTop: "3px", flexShrink: 0, color: "rgba(215,226,234,0.25)" }}>—</span>
                       <span>{highlight}</span>
                     </li>
                   ))}
                 </ul>
-              </article>
-            ))}
-            <div className="border-t border-mist/10" />
-          </div>
-        </div>
+              </div>
+            </article>
+          </FadeIn>
+        ))}
+        <div style={{ borderTop: "1px solid rgba(215,226,234,0.1)" }} />
       </div>
     </section>
   );

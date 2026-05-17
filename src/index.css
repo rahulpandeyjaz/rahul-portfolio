@@ -487,6 +487,10 @@
   .project-card {
     top: 5rem !important;
   }
+
+  #experience article {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
