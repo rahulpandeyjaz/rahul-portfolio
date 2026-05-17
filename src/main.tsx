@@ -531,12 +531,14 @@ const FILES = ['a','b','c','d','e','f','g','h'];
 const toAN = (r: number, c: number) => `${FILES[c]}${8 - r}`;
 
 function ChessGame({ onClose }: { onClose: () => void }) {
+  // null = color picker screen not yet dismissed
+  const [playerColor, setPlayerColor] = useState<ChessColor | null>(null);
   const [board, setBoard] = useState<ChessBoard>(initChessBoard);
   const [selected, setSelected] = useState<[number, number] | null>(null);
   const [legalMoves, setLegalMoves] = useState<ChessMove[]>([]);
   const [turn, setTurn] = useState<ChessColor>('w');
-  const [status, setStatus] = useState('Your turn — you are White ♔');
-  const [log, setLog] = useState<string[]>(['Game started! You play White ♔ — AI plays Black ♚']);
+  const [status, setStatus] = useState('');
+  const [log, setLog] = useState<string[]>([]);
   const [ep, setEp] = useState<[number, number] | null>(null);
   const [cr, setCr] = useState<CastlingRights>({ wK: true, wQ: true, bK: true, bQ: true });
   const [gameOver, setGameOver] = useState(false);
@@ -545,46 +547,70 @@ function ChessGame({ onClose }: { onClose: () => void }) {
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = 0; }, [log]);
 
-  const reset = () => {
-    setBoard(initChessBoard()); setSelected(null); setLegalMoves([]);
-    setTurn('w'); setStatus('Your turn — you are White ♔');
-    setLog(['New game! You are White ♔, AI is Black ♚']);
-    setEp(null); setCr({ wK:true, wQ:true, bK:true, bQ:true });
-    setGameOver(false); setAiThinking(false);
-  };
-
-  const doAIMove = useCallback((b: ChessBoard, currentCr: CastlingRights) => {
+  // When AI plays white, it moves immediately after color is chosen
+  const doAIMove = useCallback((b: ChessBoard, currentCr: CastlingRights, aiColor: ChessColor, humanColor: ChessColor) => {
     setAiThinking(true);
-    setStatus('AI is thinking... ♟');
+    setStatus('Thinking...');
     setTimeout(() => {
       const move = getBestAIMove(b, null, currentCr);
       if (!move) {
-        const msg = isInCheck(b, 'b') ? 'Checkmate! You win! 🎉' : 'Stalemate — draw!';
+        const msg = isInCheck(b, aiColor) ? `Checkmate! You win! 🎉` : 'Stalemate — draw!';
         setStatus(msg); setLog(p => [msg, ...p]); setGameOver(true); setAiThinking(false); return;
       }
       const piece = b[move.from[0]][move.from[1]]!;
       const cap = b[move.to[0]][move.to[1]];
-      let desc = `AI: ${GLYPHS.b[piece.type]} ${toAN(move.from[0],move.from[1])} → ${toAN(move.to[0],move.to[1])}`;
-      if (cap) desc += ` ×${GLYPHS.w[cap.type]}`;
+      const aiGlyph = GLYPHS[aiColor];
+      const humanGlyph = GLYPHS[humanColor];
+      let desc = `AI: ${aiGlyph[piece.type]} ${toAN(move.from[0],move.from[1])} → ${toAN(move.to[0],move.to[1])}`;
+      if (cap) desc += ` ×${humanGlyph[cap.type]}`;
       if (move.castling) desc += ' (castle)';
       const nb = applyMove(b, move);
       const newCr = { ...currentCr };
-      if (piece.type === 'k' && piece.color === 'b') { newCr.bK = false; newCr.bQ = false; }
-      if (piece.type === 'r' && piece.color === 'b') { if (move.from[1]===0) newCr.bQ=false; if (move.from[1]===7) newCr.bK=false; }
-      const newEp: [number,number] | null = (piece.type==='p' && Math.abs(move.to[0]-move.from[0])===2) ? [(move.from[0]+move.to[0])/2, move.to[1]] : null;
+      if (piece.type === 'k' && piece.color === aiColor) {
+        if (aiColor==='b') { newCr.bK=false; newCr.bQ=false; } else { newCr.wK=false; newCr.wQ=false; }
+      }
+      if (piece.type === 'r' && piece.color === aiColor) {
+        if (aiColor==='b') { if (move.from[1]===0) newCr.bQ=false; if (move.from[1]===7) newCr.bK=false; }
+        else { if (move.from[1]===0) newCr.wQ=false; if (move.from[1]===7) newCr.wK=false; }
+      }
+      const newEp: [number,number] | null = (piece.type==='p' && Math.abs(move.to[0]-move.from[0])===2)
+        ? [(move.from[0]+move.to[0])/2, move.to[1]] : null;
       setBoard(nb); setCr(newCr); setEp(newEp);
-      const wMoves = getAllLegalMoves(nb, 'w', newEp, newCr);
-      if (wMoves.length === 0) {
-        const msg = isInCheck(nb,'w') ? 'Checkmate! AI wins 🤖' : 'Stalemate — draw!';
+      const humanMoves = getAllLegalMoves(nb, humanColor, newEp, newCr);
+      if (humanMoves.length === 0) {
+        const msg = isInCheck(nb, humanColor) ? 'Checkmate! AI wins 🤖' : 'Stalemate — draw!';
         desc += ` — ${msg}`; setStatus(msg); setGameOver(true);
-      } else if (isInCheck(nb,'w')) { desc += ' ⚠️ Check!'; setStatus('Check! ⚠️ Get your king to safety.'); }
-      else setStatus('Your turn ♔');
-      setLog(p => [desc, ...p].slice(0,40)); setTurn('w'); setAiThinking(false);
+      } else if (isInCheck(nb, humanColor)) { desc += ' ⚠️ Check!'; setStatus('Check! ⚠️'); }
+      else setStatus('Your turn');
+      setLog(p => [desc, ...p].slice(0,40)); setTurn(humanColor); setAiThinking(false);
     }, 350);
   }, []);
 
+  const startGame = (color: ChessColor) => {
+    const aiColor: ChessColor = color === 'w' ? 'b' : 'w';
+    setPlayerColor(color);
+    setBoard(initChessBoard()); setSelected(null); setLegalMoves([]);
+    setTurn('w');
+    setEp(null); setCr({ wK:true, wQ:true, bK:true, bQ:true });
+    setGameOver(false); setAiThinking(false);
+    const kingGlyph = color === 'w' ? '♔' : '♚';
+    setLog([`Game on. You play ${color === 'w' ? 'White' : 'Black'} ${kingGlyph}`]);
+    if (color === 'w') {
+      setStatus('Your turn');
+    } else {
+      // AI plays white, moves first
+      setStatus('Thinking...');
+      setTimeout(() => doAIMove(initChessBoard(), { wK:true, wQ:true, bK:true, bQ:true }, aiColor, color), 400);
+    }
+  };
+
+  const reset = () => { setPlayerColor(null); setGameOver(false); setAiThinking(false); };
+
   const handleClick = (row: number, col: number) => {
-    if (turn !== 'w' || gameOver || aiThinking) return;
+    if (!playerColor) return;
+    const humanColor = playerColor;
+    const aiColor: ChessColor = humanColor === 'w' ? 'b' : 'w';
+    if (turn !== humanColor || gameOver || aiThinking) return;
     const piece = board[row][col];
     if (selected) {
       const move = legalMoves.find(m => m.to[0]===row && m.to[1]===col && (!m.promotion || m.promotion==='q'));
@@ -592,36 +618,105 @@ function ChessGame({ onClose }: { onClose: () => void }) {
         const final = move.promotion ? { ...move, promotion: 'q' as ChessPieceType } : move;
         const mp = board[selected[0]][selected[1]]!;
         const cap = board[row][col];
-        let desc = `You: ${GLYPHS.w[mp.type]} ${toAN(selected[0],selected[1])} → ${toAN(row,col)}`;
-        if (cap) desc += ` ×${GLYPHS.b[cap.type]}`;
+        const humanGlyph = GLYPHS[humanColor];
+        const aiGlyph = GLYPHS[aiColor];
+        let desc = `You: ${humanGlyph[mp.type]} ${toAN(selected[0],selected[1])} → ${toAN(row,col)}`;
+        if (cap) desc += ` ×${aiGlyph[cap.type]}`;
         if (final.promotion) desc += ' =♕';
         if (final.castling) desc += ' (castle)';
         const nb = applyMove(board, final);
         const newCr = { ...cr };
-        if (mp.type==='k') { newCr.wK=false; newCr.wQ=false; }
-        if (mp.type==='r') { if (selected[1]===0) newCr.wQ=false; if (selected[1]===7) newCr.wK=false; }
-        const newEp: [number,number] | null = (mp.type==='p' && Math.abs(row-selected[0])===2) ? [(selected[0]+row)/2, col] : null;
+        if (mp.type==='k') { if (humanColor==='w') { newCr.wK=false; newCr.wQ=false; } else { newCr.bK=false; newCr.bQ=false; } }
+        if (mp.type==='r') {
+          if (humanColor==='w') { if (selected[1]===0) newCr.wQ=false; if (selected[1]===7) newCr.wK=false; }
+          else { if (selected[1]===0) newCr.bQ=false; if (selected[1]===7) newCr.bK=false; }
+        }
+        const newEp: [number,number] | null = (mp.type==='p' && Math.abs(row-selected[0])===2)
+          ? [(selected[0]+row)/2, col] : null;
         setBoard(nb); setCr(newCr); setEp(newEp); setSelected(null); setLegalMoves([]);
-        const bMoves = getAllLegalMoves(nb, 'b', newEp, newCr);
-        if (bMoves.length === 0) {
-          const msg = isInCheck(nb,'b') ? 'Checkmate! You win! 🎉' : 'Stalemate — draw!';
+        const aiMoves = getAllLegalMoves(nb, aiColor, newEp, newCr);
+        if (aiMoves.length === 0) {
+          const msg = isInCheck(nb, aiColor) ? 'Checkmate! You win! 🎉' : 'Stalemate — draw!';
           desc += ` — ${msg}`; setLog(p => [desc,...p].slice(0,40)); setStatus(msg); setGameOver(true); return;
         }
-        if (isInCheck(nb,'b')) desc += ' ⚠️ Check!';
-        setLog(p => [desc,...p].slice(0,40)); setTurn('b'); doAIMove(nb, newCr); return;
+        if (isInCheck(nb, aiColor)) desc += ' ⚠️ Check!';
+        setLog(p => [desc,...p].slice(0,40)); setTurn(aiColor);
+        doAIMove(nb, newCr, aiColor, humanColor); return;
       }
-      if (piece?.color === 'w') { setSelected([row,col]); setLegalMoves(getLegalMoves(board,row,col,ep,cr)); return; }
+      if (piece?.color === humanColor) {
+        setSelected([row,col]); setLegalMoves(getLegalMoves(board,row,col,ep,cr)); return;
+      }
       setSelected(null); setLegalMoves([]); return;
     }
-    if (piece?.color === 'w') { setSelected([row,col]); setLegalMoves(getLegalMoves(board,row,col,ep,cr)); }
+    if (piece?.color === humanColor) { setSelected([row,col]); setLegalMoves(getLegalMoves(board,row,col,ep,cr)); }
   };
 
-  const isTarget = (r: number, c: number) => legalMoves.some(m => m.to[0]===r && m.to[1]===c);
-  const kingPos = findKing(board, 'w');
-  const kingInCheck = !gameOver && kingPos && isInCheck(board, 'w');
-
+  const humanColor = playerColor ?? 'w';
+  const kingPos = findKing(board, humanColor);
+  const kingInCheck = playerColor && !gameOver && kingPos && isInCheck(board, humanColor);
   const SQ = 52;
 
+  // ── Color picker screen ──
+  if (!playerColor) {
+    return (
+      <div
+        style={{ position:"fixed", inset:0, zIndex:10000, background:"rgba(0,0,0,0.95)",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          padding:"1rem", fontFamily:"Kanit, sans-serif" }}
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ scale:0.88, opacity:0, y:28 }}
+          animate={{ scale:1, opacity:1, y:0 }}
+          transition={{ duration:0.35, ease:[0.25,0.1,0.25,1] }}
+          onClick={e => e.stopPropagation()}
+          style={{ background:"#0c0c1a", border:"1px solid rgba(215,226,234,0.15)",
+            borderRadius:"1.5rem", padding:"2.5rem 2rem", maxWidth:"400px", width:"100%",
+            textAlign:"center", position:"relative" }}
+        >
+          <button onClick={onClose} style={{ position:"absolute", top:"1rem", right:"1rem",
+            background:"rgba(215,226,234,0.08)", border:"1px solid rgba(215,226,234,0.15)",
+            borderRadius:"50%", width:"2rem", height:"2rem", display:"flex", alignItems:"center",
+            justifyContent:"center", color:"#d7e2ea", cursor:"pointer" }}>
+            <X size={14} />
+          </button>
+
+          <div style={{ fontSize:"3rem", marginBottom:"1rem" }}>♟</div>
+          <h2 style={{ color:"#d7e2ea", fontSize:"1.5rem", fontWeight:900, textTransform:"uppercase",
+            letterSpacing:"0.08em", marginBottom:"0.5rem" }}>
+            Let's See Who Wins
+          </h2>
+          <p style={{ color:"rgba(215,226,234,0.45)", fontSize:"0.78rem", letterSpacing:"0.12em",
+            textTransform:"uppercase", marginBottom:"2rem" }}>
+            Pick your side
+          </p>
+
+          <div style={{ display:"flex", gap:"1rem", justifyContent:"center" }}>
+            {([
+              { color:'w' as ChessColor, label:'White', glyph:'♔', sub:'You move first' },
+              { color:'b' as ChessColor, label:'Black', glyph:'♚', sub:'AI moves first' }
+            ]).map(({ color, label, glyph, sub }) => (
+              <button key={color} onClick={() => startGame(color)}
+                style={{ flex:1, background:"rgba(215,226,234,0.06)",
+                  border:"1px solid rgba(215,226,234,0.18)", borderRadius:"1rem",
+                  padding:"1.5rem 1rem", cursor:"pointer", fontFamily:"inherit",
+                  transition:"background 200ms ease, border-color 200ms ease",
+                  display:"flex", flexDirection:"column", alignItems:"center", gap:"0.5rem" }}
+                onMouseEnter={e => { e.currentTarget.style.background="rgba(215,226,234,0.12)"; e.currentTarget.style.borderColor="rgba(215,226,234,0.4)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background="rgba(215,226,234,0.06)"; e.currentTarget.style.borderColor="rgba(215,226,234,0.18)"; }}
+              >
+                <span style={{ fontSize:"2.5rem", lineHeight:1 }}>{glyph}</span>
+                <span style={{ color:"#d7e2ea", fontWeight:700, fontSize:"0.95rem", textTransform:"uppercase", letterSpacing:"0.1em" }}>{label}</span>
+                <span style={{ color:"rgba(215,226,234,0.4)", fontSize:"0.65rem", textTransform:"uppercase", letterSpacing:"0.1em" }}>{sub}</span>
+              </button>
+            ))}
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // ── Board screen ──
   return (
     <div
       style={{ position:"fixed", inset:0, zIndex:10000, background:"rgba(0,0,0,0.95)",
@@ -639,7 +734,7 @@ function ChessGame({ onClose }: { onClose: () => void }) {
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
           <div>
             <h2 style={{ color:"#d7e2ea", fontSize:"1.4rem", fontWeight:800, textTransform:"uppercase", letterSpacing:"0.1em" }}>
-              ♟ Chess — Human vs AI
+              ♟ Let's See Who Wins
             </h2>
             <p style={{ color:"rgba(215,226,234,0.5)", fontSize:"0.72rem", letterSpacing:"0.14em", textTransform:"uppercase", marginTop:"0.2rem" }}>
               {status}
@@ -674,17 +769,15 @@ function ChessGame({ onClose }: { onClose: () => void }) {
                 {rowArr.map((piece, c) => {
                   const light = (r+c)%2===0;
                   const isSel = selected?.[0]===r && selected?.[1]===c;
-                  const isTgt = isTarget(r,c);
                   const isCheckKing = kingInCheck && kingPos?.[0]===r && kingPos?.[1]===c;
                   let bg = light ? '#f0d9b5' : '#b58863';
                   if (isSel) bg = '#7fc97f';
-                  else if (isTgt) bg = light ? '#cdd26a' : '#aaa23a';
                   if (isCheckKing) bg = '#e05555';
                   return (
                     <div key={c} onClick={() => handleClick(r,c)}
                       style={{ width:`${SQ}px`, height:`${SQ}px`, background:bg,
                         display:"flex", alignItems:"center", justifyContent:"center",
-                        cursor:(turn==='w'&&!gameOver&&!aiThinking)?"pointer":"default",
+                        cursor:(turn===humanColor&&!gameOver&&!aiThinking)?"pointer":"default",
                         fontSize:"2rem", lineHeight:1, userSelect:"none", position:"relative",
                         transition:"background 0.12s" }}>
                       {piece && (
@@ -696,12 +789,6 @@ function ChessGame({ onClose }: { onClose: () => void }) {
                         }}>
                           {GLYPHS[piece.color][piece.type]}
                         </span>
-                      )}
-                      {isTgt && !piece && (
-                        <div style={{ width:"14px", height:"14px", borderRadius:"50%", background:"rgba(0,0,0,0.22)" }} />
-                      )}
-                      {isTgt && piece && (
-                        <div style={{ position:"absolute", inset:0, border:"3px solid rgba(0,0,0,0.3)", borderRadius:"2px", pointerEvents:"none" }} />
                       )}
                     </div>
                   );
@@ -730,11 +817,10 @@ function ChessGame({ onClose }: { onClose: () => void }) {
                 </div>
               ))}
             </div>
-            {/* Legend */}
+            {/* Legend — only selected + check, no legal move */}
             <div style={{ display:"flex", flexWrap:"wrap", gap:"0.5rem" }}>
               {[
                 { color:"#7fc97f", label:"Selected" },
-                { color:"#cdd26a", label:"Legal move" },
                 { color:"#e05555", label:"King in check" }
               ].map(({ color, label }) => (
                 <div key={label} style={{ display:"flex", alignItems:"center", gap:"0.3rem" }}>
