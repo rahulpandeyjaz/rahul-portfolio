@@ -753,7 +753,8 @@ function MarqueeRow({
           if (posRef.current <= -singleWidth) posRef.current += singleWidth;
         } else {
           posRef.current += SPEED;
-          if (posRef.current >= singleWidth) posRef.current -= singleWidth;
+          // Wrap at 0, not singleWidth — valid range for "right" is [-singleWidth, 0)
+          if (posRef.current >= 0) posRef.current -= singleWidth;
         }
 
         track.style.transform = `translateX(${posRef.current}px)`;
@@ -782,7 +783,8 @@ function MarqueeRow({
       posRef.current -= delta * 0.55;
       // Normalise within one segment to keep seamless looping
       if (posRef.current < -singleWidth) posRef.current += singleWidth;
-      if (posRef.current > singleWidth) posRef.current -= singleWidth;
+      if (posRef.current >= 0 && direction === "right") posRef.current -= singleWidth;
+      if (posRef.current > singleWidth && direction === "left") posRef.current -= singleWidth;
       track.style.transform = `translateX(${posRef.current}px)`;
     };
 
@@ -806,7 +808,8 @@ function MarqueeRow({
       : trackRef.current.scrollWidth / 3;
     posRef.current += dx;
     if (posRef.current < -singleWidth) posRef.current += singleWidth;
-    if (posRef.current > singleWidth) posRef.current -= singleWidth;
+    if (posRef.current >= 0 && direction === "right") posRef.current -= singleWidth;
+    if (posRef.current > singleWidth && direction === "left") posRef.current -= singleWidth;
     trackRef.current.style.transform = `translateX(${posRef.current}px)`;
   };
 
